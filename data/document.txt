@@ -1,0 +1,91 @@
+I’ve been a data scientist for 6 years now. If you’d asked me what I’m an expert in, I would have confidently said “classification models for tabular data”.
+
+But here’s the thing about thinking you’re an expert: that’s usually when you discover how much more there is to learn.
+
+A few weeks ago, while working on a project that depended on probability prediction, I had one of those “Wait, have I been doing this wrong the whole time?” moments.
+
+But let’s start at the beginning.
+
+Step one: What really matters?
+To choose the right metric, you first have to figure out what really matters for your problem.
+
+In my case, I was working on a model whose outputs directly influenced economic value calculations. So it wasn’t just about getting the classes right, it was about getting the probabilities right.
+
+A model that is able to estimate good probabilities is called a calibrated model.
+
+In practice, a model is calibrated if, for all the observations it assigns a, let’s say, 25% probability of being positive, roughly 25% of them actually are positive.
+
+So, what metrics should I use to make sure that my model is calibrated?
+
+What are my benchmark metrics?
+Recently, I’ve read many posts on LinkedIn about calibration. The authors of these posts (for example, here and here) claim that looking at the ROC-AUC score alone is not enough. In fact, to make sure that the model is well calibrated, you should use Brier score and/or Log-loss.
+
+So, I decided to track all of these metrics:
+
+1. ROC-AUC score
+
+Measures how well the model ranks positives above negatives. It says nothing about the quality of predicted probabilities.
+
+2. Brier score
+
+If you’re familiar with regression models, the Brier score is simply the mean squared error of the predicted probabilities, in other words:
+
+brier_score = np.mean((y_proba - y_true) ** 2)
+3. Log-loss
+
+Measures the likelihood of predicted probabilities given the true labels:
+
+log_loss = - np.mean(y_true * np.log(y_proba) + (1 - y_true) * np.log(1 - y_proba))
+Since I can’t share the real data I’m working on, in this post I’ll have to use a public dataset, the “Bank” dataset from PyCaret. That’s not a problem, though: the insights are the same as those I uncovered in the original project.
+
+Here’s what I did to get the results I’ll discuss in this post:
+
+I randomly extracted 100 different subsets of predictive variables, simulating a crude form of feature selection.
+I trained 4 models on each subset of variables: Logistic Regression, Decision Tree, Random Forest, and LightGBM.
+That gave me 100 × 4 = 400 models.
+I tracked all metrics on a holdout test set.
+Want more details? Check the notebook.
+
+The calibration plot
+The most intuitive way to visualize the calibration of a model is the “calibration plot”.
+
+Here’s the idea: you split predicted probabilities into bins. Then, for each bin, you compare the average predicted probability (x-axis) to the actual fraction of positives (y-axis).
+
+So I’ll take one model at random (from my 400 candidate models) and draw its calibration plot. Underneath the calibration plot, I will also add a histogram of the predicted probabilities.
+
+Press enter or click to view image in full size
+
+Top: calibration plot. Bottom: histogram of predicted probabilities. [Image by Author]
+The interpretation of the calibration plot is straightforward. If the model is perfectly calibrated, the curve should lie exactly on the 45-degree line. For example, if a bin has an average predicted probability of 25%, then 25% of the actual outcomes in that bin should be positive. If that was true for each bin, then the curve would coincide with the 45-degree line.
+
+So, the farther the single points of the calibration curve are from that diagonal, the more mis-calibrated the model is.
+
+A metric for calibration: Expected Calibration Error (ECE)
+Everybody likes plots. But besides the calibration plot, we need a quantitative way to measure (mis)calibration. There is a metric that stems directly from the calibration plot and is called Expected Calibration Error (ECE).
+
+Conceptually, ECE summarizes how far the points on the calibration curve are from the 45-degree line.
+
+So, imagine we have the following quantities:
+
+proba_means: a vector containing the average predicted probability for each bin.
+y_means: a vector with the fraction of positives for each bin.
+counts: a vector with the count of individuals in each bin.
+Then ECE is simply the absolute distance of each bin’s average predicted probability from the fraction of positives, weighted by the size of the bin.
+
+ece = np.sum(np.abs((proba_means - y_means) * counts)) / np.sum(counts)
+I like ECE because it measures calibration explicitly. That’s not quite true for metrics like Brier score or Log-loss, which measure calibration with other things.
+
+ECE is also very intuitive. No logs, no squares, just average absolute errors.
+
+So I thought, since the main thing I care about is calibration, why don’t I just use ECE to evaluate my model, instead of looking also at the other metrics?
+
+ECE alone is not enough
+I computed the ECE for all 400 models. Then I sorted them and found out that the model with the lowest ECE had an ECE of just 0.21%. Amazing, right?
+
+Out of curiosity, I looked also at the other metrics. ROC-AUC: 54%, which means it is barely better than random guessing.
+
+How is this possible?
+
+How can a model be super well-calibrated (an ECE of just 0.21%), but be so bad at ranking (ROC-AUC equal to 54%)?
+
+Let’s look at the calibration plot of this model (let’s call it Model B) and compare it to the model we have se
